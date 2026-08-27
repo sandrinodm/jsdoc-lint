@@ -1,5 +1,5 @@
 import { visitSourceFile } from './declarations.ts';
-import { collectPackageInfos, collectSourceFiles, parseSourceFile, shouldScanPath, toRelativePath } from './files.ts';
+import { collectPackageInfos, collectSourceFiles, parseSourceFiles, shouldScanPath, toRelativePath } from './files.ts';
 import type { CheckResult, FailureEntry, NormalizedOptions } from './types.ts';
 
 export { loadConfig, normalizeOptions } from './config.ts';
@@ -28,13 +28,13 @@ export function runCheck(options: NormalizedOptions): CheckResult {
       continue;
     }
 
-    const sourceFiles = collectSourceFiles(packageInfo.root, options);
-    for (const filePath of sourceFiles) {
-      if (!shouldScanPath(filePath, options.targetFilters)) {
-        continue;
-      }
+    const filePaths = collectSourceFiles(packageInfo.root, options).filter((filePath) =>
+      shouldScanPath(filePath, options.targetFilters)
+    );
+    const sourceFiles = parseSourceFiles(filePaths);
 
-      const sourceFile = parseSourceFile(filePath);
+    for (const [index, sourceFile] of sourceFiles.entries()) {
+      const filePath = filePaths[index] as string;
       visitSourceFile(
         sourceFile,
         (entry) => {

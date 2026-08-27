@@ -59,7 +59,7 @@
     "provenance": true
   },
   "dependencies": {
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.13",

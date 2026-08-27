@@ -1,4 +1,4 @@
-import type ts from 'typescript';
+import type * as ts from 'typescript/unstable/ast';
 
 /**
  * Options for loading a jsdoc-lint config file.

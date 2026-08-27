@@ -1,4 +1,4 @@
-import ts from 'typescript';
+import * as ts from 'typescript/unstable/ast';
 
 /**
  * Optional schema-member JSDoc rules.
@@ -209,7 +209,7 @@ function findContainingCallArgument(
     ts.isAsExpression(argument.parent) ||
     ts.isParenthesizedExpression(argument.parent) ||
     ts.isSatisfiesExpression(argument.parent) ||
-    ts.isTypeAssertionExpression(argument.parent) ||
+    ts.isTypeAssertion(argument.parent) ||
     ts.isNonNullExpression(argument.parent)
   ) {
     argument = argument.parent;
@@ -230,7 +230,7 @@ function findContainingCallArgument(
  * @param bindings Imported schema bindings.
  * @returns True when the target creates a Drizzle table.
  */
-function isDrizzleTableCall(expression: ts.LeftHandSideExpression, bindings: SchemaBindings): boolean {
+function isDrizzleTableCall(expression: ts.Expression, bindings: SchemaBindings): boolean {
   if (ts.isIdentifier(expression)) {
     return bindings.drizzleTableFunctions.has(expression.text);
   }
@@ -250,7 +250,7 @@ function isDrizzleTableCall(expression: ts.LeftHandSideExpression, bindings: Sch
  * @param bindings Imported schema bindings.
  * @returns True when the target creates a Zod object schema.
  */
-function isZodObjectCall(expression: ts.LeftHandSideExpression, bindings: SchemaBindings): boolean {
+function isZodObjectCall(expression: ts.Expression, bindings: SchemaBindings): boolean {
   if (ts.isIdentifier(expression)) {
     return bindings.zodObjectFunctions.has(expression.text);
   }

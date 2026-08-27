@@ -4,12 +4,12 @@ Context is king. JSDoc lets teams colocate durable, human-readable context direc
 
 `jsdoc-lint` is authored in TypeScript, publishes built JavaScript and declarations, and targets Node.js 24. The checker covers:
 
-- functions and function-like declarations
+- top-level functions and function-valued declarations
 - classes, interfaces, and type aliases
 - documented fields on classes, interfaces, and named object type aliases
-- direct members of inline type arguments in class `extends` clauses
+- direct members of inline type arguments in class `extends` expressions, including generic call chains
 - top-level `const` declarations
-- direct properties inside top-level object-literal constants
+- direct properties and methods inside top-level object-literal constants
 - optionally, direct Drizzle table and Zod object-schema members
 
 JSDoc blocks must be multiline. Single-line blocks like `/** Description. */` are reported the same way as missing JSDoc.

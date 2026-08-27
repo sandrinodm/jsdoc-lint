@@ -1,6 +1,6 @@
-import ts from 'typescript';
 import { describe, expect, test } from 'vitest';
 import { visitSourceFile } from './declarations.js';
+import { parseSourceText } from './files.js';
 import type { FailureEntry } from './types.js';
 
 describe('visitSourceFile', () => {
@@ -35,6 +35,7 @@ describe('visitSourceFile', () => {
         '  two,',
         '  skip() {},',
         '  nestedArrow: () => {},',
+        '  nestedFunction: function () {},',
         '  nested: {',
         '    value: 1,',
         '    arrow: () => {},',
@@ -52,8 +53,7 @@ describe('visitSourceFile', () => {
         'const two = 2;',
         'for (const loopArrow = () => {}; false;) {}',
       ].join('\n'),
-      'all.tsx',
-      ts.ScriptKind.TSX
+      'all.tsx'
     );
 
     expect(failures.map(({ kind, name }) => ({ kind, name }))).toEqual([
@@ -80,9 +80,9 @@ describe('visitSourceFile', () => {
       { kind: 'TopLevelConstPropertyAssignment', name: 'one' },
       { kind: 'TopLevelConstShorthandProperty', name: 'two' },
       { kind: 'MethodDeclaration', name: 'skip' },
+      { kind: 'ArrowFunctionProperty', name: 'nestedArrow' },
+      { kind: 'FunctionExpressionProperty', name: 'nestedFunction' },
       { kind: 'TopLevelConstPropertyAssignment', name: 'nested' },
-      { kind: 'ArrowFunctionProperty', name: 'arrow' },
-      { kind: 'FunctionExpressionProperty', name: 'fn' },
       { kind: 'TopLevelConstDeclaration', name: 'wrapped' },
       { kind: 'TopLevelConstPropertyAssignment', name: 'wrappedValue' },
       { kind: 'TopLevelConstDeclaration', name: 'nonNullWrapped' },
@@ -247,9 +247,6 @@ describe('visitSourceFile', () => {
       { kind: 'ArrowFunction', name: 'compute' },
       { kind: 'FunctionExpression', name: 'expression' },
       { kind: 'TopLevelConstDeclaration', name: 'loader' },
-      { kind: 'MethodDeclaration', name: 'component' },
-      { kind: 'ArrowFunctionProperty', name: 'nestedArrow' },
-      { kind: 'FunctionExpressionProperty', name: 'nestedFunction' },
     ]);
   });
 
@@ -270,6 +267,79 @@ describe('visitSourceFile', () => {
       { kind: 'PropertySignature', name: 'cause' },
       { kind: 'PropertySignature', name: 'message' },
     ]);
+  });
+
+  test('reports undocumented members in a generic call chain used by a class extends clause', () => {
+    const failures = collectDeclarationFailures(
+      [
+        '/**',
+        ' * Host-owned inputs for database acquisition.',
+        ' */',
+        'export class DatabaseOptions extends Context.Service<',
+        '  DatabaseOptions,',
+        '  {',
+        '    readonly database: DatabaseRuntimeConfig;',
+        '    readonly onPoolError: (error: Error) => void;',
+        '  }',
+        ">()('@monetti/api/DatabaseOptions') {}",
+      ].join('\n')
+    );
+
+    expect(failures.map(({ kind, name }) => ({ kind, name }))).toEqual([
+      { kind: 'PropertySignature', name: 'database' },
+      { kind: 'PropertySignature', name: 'onPoolError' },
+    ]);
+  });
+
+  test('ignores call type arguments that are not part of a class extends callee chain', () => {
+    const failures = collectDeclarationFailures(
+      [
+        '/**',
+        ' * Uses a nested generic call as a runtime argument.',
+        ' */',
+        'export class WrappedService extends outer(inner<{',
+        '  ignored: string;',
+        '}>()) {}',
+        '/**',
+        ' * Builds an unrelated generic value.',
+        ' */',
+        'export const value = factory<{',
+        '  alsoIgnored: string;',
+        '}>();',
+      ].join('\n')
+    );
+
+    expect(failures).toEqual([]);
+  });
+
+  test('ignores function-valued properties inside nested runtime objects', () => {
+    const failures = collectDeclarationFailures(
+      [
+        '/**',
+        ' * Acquires the HTTP application.',
+        ' */',
+        'export function acquireHttpApp() {',
+        '  return Effect.acquireRelease(',
+        '    Effect.try({',
+        '      try: () => {',
+        '        const app = Fastify({',
+        '          genReqId: () => randomUUID(),',
+        '          requestIdHeader: false,',
+        '          loggerInstance: logger,',
+        '        });',
+        '        return app;',
+        '      },',
+        '      catch: (cause) => new HttpAppInitializationError({ cause }),',
+        '      onReady() {},',
+        "      get status() { return 'ready'; },",
+        '      set status(_value: string) {},',
+        '    }),',
+        '  );',
+        '}',
+      ].join('\n')
+    );
+
+    expect(failures).toEqual([]);
   });
 
   test('requires class JSDoc independently of inline class heritage member JSDoc', () => {
@@ -319,9 +389,10 @@ describe('visitSourceFile', () => {
 
     expect(collectDeclarationFailures(sourceText)).toEqual([]);
     expect(
-      collectDeclarationFailures(sourceText, 'source.ts', ts.ScriptKind.TS, { requireDrizzleJsDoc: true }).map(
-        ({ kind, name }) => ({ kind, name })
-      )
+      collectDeclarationFailures(sourceText, 'source.ts', { requireDrizzleJsDoc: true }).map(({ kind, name }) => ({
+        kind,
+        name,
+      }))
     ).toEqual([
       { kind: 'DrizzleSchemaProperty', name: 'id' },
       { kind: 'DrizzleSchemaProperty', name: 'displayName' },
@@ -347,9 +418,10 @@ describe('visitSourceFile', () => {
 
     expect(collectDeclarationFailures(sourceText)).toEqual([]);
     expect(
-      collectDeclarationFailures(sourceText, 'source.ts', ts.ScriptKind.TS, { requireZodJsDoc: true }).map(
-        ({ kind, name }) => ({ kind, name })
-      )
+      collectDeclarationFailures(sourceText, 'source.ts', { requireZodJsDoc: true }).map(({ kind, name }) => ({
+        kind,
+        name,
+      }))
     ).toEqual([
       { kind: 'ZodSchemaProperty', name: 'id' },
       { kind: 'ZodSchemaProperty', name: 'profile' },
@@ -384,7 +456,7 @@ describe('visitSourceFile', () => {
     ].join('\n');
 
     expect(
-      collectDeclarationFailures(sourceText, 'source.ts', ts.ScriptKind.TS, {
+      collectDeclarationFailures(sourceText, 'source.ts', {
         requireDrizzleJsDoc: true,
         requireZodJsDoc: true,
       })
@@ -413,11 +485,10 @@ describe('visitSourceFile', () => {
 function collectDeclarationFailures(
   sourceText: string,
   fileName = 'source.ts',
-  scriptKind = ts.ScriptKind.TS,
   options: { requireDrizzleJsDoc?: boolean; requireZodJsDoc?: boolean } = {}
 ): Pick<FailureEntry, 'kind' | 'line' | 'name'>[] {
   const failures: Pick<FailureEntry, 'kind' | 'line' | 'name'>[] = [];
-  const sourceFile = ts.createSourceFile(fileName, sourceText, ts.ScriptTarget.Latest, true, scriptKind);
+  const sourceFile = parseSourceText(fileName, sourceText);
 
   visitSourceFile(sourceFile, (failure) => failures.push(failure), options);
 

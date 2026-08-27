@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import ts from 'typescript';
+import type * as ts from 'typescript/unstable/ast';
+import { createVirtualFileSystem } from 'typescript/unstable/fs';
+import { API } from 'typescript/unstable/sync';
 
 import type { NormalizedOptions, PackageInfo } from './types.ts';
 
@@ -127,14 +129,80 @@ function isExplicitFileTarget(filePath: string, filters: string[]): boolean {
 }
 
 /**
+ * Parses JavaScript or TypeScript source files with the TypeScript API.
+ *
+ * @param filePaths Absolute file paths.
+ * @returns Parsed source files in input order.
+ */
+export function parseSourceFiles(filePaths: string[]): ts.SourceFile[] {
+  if (filePaths.length === 0) {
+    return [];
+  }
+
+  const api = new API({ cwd: path.dirname(filePaths[0] as string) });
+
+  try {
+    const snapshot = api.updateSnapshot({ openFiles: filePaths });
+
+    try {
+      return filePaths.map((filePath) => {
+        const sourceFile = snapshot.getDefaultProjectForFile(filePath)?.program.getSourceFile(filePath);
+        /* v8 ignore next 3 -- opening an existing file guarantees a default project and parsed source file. */
+        if (!sourceFile) {
+          throw new Error(`TypeScript could not parse source file: ${filePath}`);
+        }
+
+        return sourceFile;
+      });
+    } finally {
+      snapshot.dispose();
+    }
+  } finally {
+    api.close();
+  }
+}
+
+/**
  * Parses a JavaScript or TypeScript source file.
  *
  * @param filePath Absolute file path.
  * @returns Parsed source file.
  */
 export function parseSourceFile(filePath: string): ts.SourceFile {
-  const sourceText = fs.readFileSync(filePath, 'utf8');
-  return ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true, getScriptKind(filePath));
+  return parseSourceFiles([filePath])[0] as ts.SourceFile;
+}
+
+/**
+ * Parses in-memory source text with the TypeScript API.
+ *
+ * @param fileName Virtual source file name.
+ * @param sourceText Source text to parse.
+ * @returns Parsed source file.
+ */
+export function parseSourceText(fileName: string, sourceText: string): ts.SourceFile {
+  const filePath = path.resolve('/virtual-jsdoc-lint', fileName);
+  const api = new API({
+    cwd: path.dirname(filePath),
+    fs: createVirtualFileSystem({ [filePath]: sourceText }),
+  });
+
+  try {
+    const snapshot = api.updateSnapshot({ openFiles: [filePath] });
+
+    try {
+      const sourceFile = snapshot.getDefaultProjectForFile(filePath)?.program.getSourceFile(filePath);
+      /* v8 ignore next 3 -- the virtual filesystem always provides the opened source file. */
+      if (!sourceFile) {
+        throw new Error(`TypeScript could not parse source text: ${fileName}`);
+      }
+
+      return sourceFile;
+    } finally {
+      snapshot.dispose();
+    }
+  } finally {
+    api.close();
+  }
 }
 
 /**
@@ -166,27 +234,6 @@ export function shouldScanPath(targetPath: string, filters: string[]): boolean {
  */
 export function toRelativePath(targetPath: string, workspaceRoot: string): string {
   return path.relative(workspaceRoot, targetPath) || '.';
-}
-
-/**
- * Maps file extensions to TypeScript parser modes.
- *
- * @param filePath Absolute file path.
- * @returns Script kind for parsing.
- */
-function getScriptKind(filePath: string): ts.ScriptKind {
-  switch (path.extname(filePath)) {
-    case '.js':
-    case '.cjs':
-    case '.mjs':
-      return ts.ScriptKind.JS;
-    case '.jsx':
-      return ts.ScriptKind.JSX;
-    case '.tsx':
-      return ts.ScriptKind.TSX;
-    default:
-      return ts.ScriptKind.TS;
-  }
 }
 
 /**

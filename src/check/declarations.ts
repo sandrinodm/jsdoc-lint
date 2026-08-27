@@ -1,4 +1,4 @@
-import ts from 'typescript';
+import * as ts from 'typescript/unstable/ast';
 
 import { createSchemaPropertyClassifier, type SchemaJsDocOptions } from './schema-declarations.ts';
 import type { DocumentableDeclaration, FailureEntry } from './types.ts';
@@ -44,7 +44,7 @@ export function visitSourceFile(
       }
     }
 
-    ts.forEachChild(node, visit);
+    node.forEachChild(visit);
   };
 
   visit(sourceFile);
@@ -76,15 +76,15 @@ function getDocumentableDeclaration(
     return createDocumentableDeclaration('FunctionDeclaration', node.name?.getText() ?? '<anonymous>', node, node);
   }
 
-  if (ts.isMethodDeclaration(node)) {
+  if (ts.isMethodDeclaration(node) && isDocumentableMethodLikeDeclaration(node)) {
     return createDocumentableDeclaration('MethodDeclaration', node.name.getText(), node, node);
   }
 
-  if (ts.isGetAccessorDeclaration(node)) {
+  if (ts.isGetAccessorDeclaration(node) && isDocumentableMethodLikeDeclaration(node)) {
     return createDocumentableDeclaration('GetAccessor', node.name.getText(), node, node);
   }
 
-  if (ts.isSetAccessorDeclaration(node)) {
+  if (ts.isSetAccessorDeclaration(node) && isDocumentableMethodLikeDeclaration(node)) {
     return createDocumentableDeclaration('SetAccessor', node.name.getText(), node, node);
   }
 
@@ -103,11 +103,11 @@ function getDocumentableDeclaration(
     return createDocumentableDeclaration('PropertyDeclaration', node.name.getText(), node, node);
   }
 
-  if (ts.isPropertySignature(node) && isDocumentableTypeMember(node.parent)) {
+  if (ts.isPropertySignatureDeclaration(node) && isDocumentableTypeMember(node.parent)) {
     return createDocumentableDeclaration('PropertySignature', node.name.getText(), node, node);
   }
 
-  if (ts.isMethodSignature(node) && isDocumentableTypeMember(node.parent)) {
+  if (ts.isMethodSignatureDeclaration(node) && isDocumentableTypeMember(node.parent)) {
     return createDocumentableDeclaration('MethodSignature', node.name.getText(), node, node);
   }
 
@@ -135,8 +135,13 @@ function getDocumentableDeclaration(
   }
 
   if (ts.isPropertyAssignment(node) && isTopLevelConstObjectProperty(node)) {
-    if (isFunctionLikeInitializer(node.initializer)) {
-      return null;
+    if (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)) {
+      return createDocumentableDeclaration(
+        ts.isArrowFunction(node.initializer) ? 'ArrowFunctionProperty' : 'FunctionExpressionProperty',
+        node.name.getText(),
+        node,
+        node
+      );
     }
 
     return createDocumentableDeclaration('TopLevelConstPropertyAssignment', node.name.getText(), node, node);
@@ -152,18 +157,22 @@ function getDocumentableDeclaration(
     return createDocumentableDeclaration(schemaPropertyKind, schemaProperty.name.getText(), node, node);
   }
 
-  if (ts.isPropertyAssignment(node)) {
-    if (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)) {
-      return createDocumentableDeclaration(
-        ts.isArrowFunction(node.initializer) ? 'ArrowFunctionProperty' : 'FunctionExpressionProperty',
-        node.name.getText(),
-        node,
-        node
-      );
-    }
-  }
-
   return null;
+}
+
+/**
+ * Checks whether a method-like declaration is a class member or a direct member of a top-level object constant.
+ *
+ * @param node Method-like declaration to inspect.
+ * @returns True when the declaration belongs to a documentable boundary.
+ */
+function isDocumentableMethodLikeDeclaration(
+  node: ts.MethodDeclaration | ts.GetAccessorDeclaration | ts.SetAccessorDeclaration
+): boolean {
+  return (
+    ts.isClassDeclaration(node.parent) ||
+    (ts.isObjectLiteralExpression(node.parent) && isTopLevelConstObjectLiteral(node.parent))
+  );
 }
 
 /**
@@ -196,13 +205,28 @@ function isDocumentableTypeMember(node: ts.Node): boolean {
 }
 
 /**
- * Checks whether a type literal is a direct type argument in a class extends clause.
+ * Checks whether a type literal is a type argument in a class extends expression.
  *
  * @param node Type literal node to inspect.
  * @returns True when the type literal describes an extended class's inline type argument.
  */
 function isClassExtendsTypeArgument(node: ts.TypeLiteralNode): boolean {
-  const expression = node.parent;
+  let expression: ts.Node = node.parent;
+
+  while (ts.isCallExpression(expression)) {
+    const parent = expression.parent;
+    if (ts.isExpressionWithTypeArguments(parent)) {
+      expression = parent;
+      break;
+    }
+
+    if (!ts.isCallExpression(parent) || parent.expression !== expression) {
+      return false;
+    }
+
+    expression = parent;
+  }
+
   if (!ts.isExpressionWithTypeArguments(expression)) {
     return false;
   }
@@ -319,7 +343,7 @@ function getJsDocBlocks(node: ts.Node | undefined): ts.JSDoc[] {
     return [];
   }
 
-  return ts.getJSDocCommentsAndTags(node).filter(ts.isJSDoc);
+  return (node.jsDoc ?? []).filter(ts.isJSDoc);
 }
 
 /**
@@ -370,7 +394,7 @@ function getNextSiblingDeclarationNode(node: ts.Node): ts.Node | undefined {
 function isTopLevelConstStatement(node: ts.VariableStatement): boolean {
   return (
     ts.isSourceFile(node.parent) &&
-    (ts.getCombinedNodeFlags(node.declarationList) & ts.NodeFlags.Const) !== 0 &&
+    (node.declarationList.flags & ts.NodeFlags.Const) !== 0 &&
     node.declarationList.declarations.length === 1
   );
 }
@@ -429,7 +453,7 @@ function unwrapExpressionParent(node: ts.Node): ts.Node | undefined {
     ts.isAsExpression(current) ||
     ts.isParenthesizedExpression(current) ||
     ts.isSatisfiesExpression(current) ||
-    ts.isTypeAssertionExpression(current) ||
+    ts.isTypeAssertion(current) ||
     ts.isNonNullExpression(current)
   ) {
     current = current.parent;

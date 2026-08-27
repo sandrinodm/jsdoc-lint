@@ -1,5 +1,6 @@
-import ts from 'typescript';
+import * as ts from 'typescript/unstable/ast';
 import { describe, expect, test } from 'vitest';
+import { parseSourceText } from './files.js';
 import {
   createSchemaPropertyClassifier,
   type SchemaJsDocOptions,
@@ -76,7 +77,7 @@ function classifySchemaProperties(
   sourceText: string,
   options: SchemaJsDocOptions = {}
 ): Array<{ kind: SchemaPropertyKind; name: string }> {
-  const sourceFile = ts.createSourceFile('source.ts', sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const sourceFile = parseSourceText('source.ts', sourceText);
   const classify = createSchemaPropertyClassifier(sourceFile, options);
   const results: Array<{ kind: SchemaPropertyKind; name: string }> = [];
 
@@ -86,7 +87,7 @@ function classifySchemaProperties(
       results.push({ kind, name: node.name.getText(sourceFile) });
     }
 
-    ts.forEachChild(node, visit);
+    node.forEachChild(visit);
   };
 
   visit(sourceFile);

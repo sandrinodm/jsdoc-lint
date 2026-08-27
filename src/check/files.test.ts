@@ -1,10 +1,17 @@
 import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import ts from 'typescript';
+import * as ts from 'typescript/unstable/ast';
 import { describe, expect, test } from 'vitest';
 import { normalizeOptions } from './config.js';
-import { collectPackageInfos, collectSourceFiles, parseSourceFile, shouldScanPath, toRelativePath } from './files.js';
+import {
+  collectPackageInfos,
+  collectSourceFiles,
+  parseSourceFile,
+  parseSourceFiles,
+  shouldScanPath,
+  toRelativePath,
+} from './files.js';
 
 describe('files', () => {
   test('collects packages and source files with path, extension, and filename filters', async () => {
@@ -59,6 +66,7 @@ describe('files', () => {
     expect(shouldScanPath(join(workspaceRoot, 'src/file.ts'), [join(workspaceRoot, 'src')])).toBe(true);
     expect(shouldScanPath(join(workspaceRoot, 'src'), [join(workspaceRoot, 'src/file.ts')])).toBe(true);
     expect(shouldScanPath(join(workspaceRoot, 'other'), [join(workspaceRoot, 'src/file.ts')])).toBe(false);
+    expect(parseSourceFiles([])).toEqual([]);
 
     for (const extension of ['js', 'cjs', 'mjs', 'jsx', 'tsx', 'ts']) {
       expect(ts.isSourceFile(parseSourceFile(join(workspaceRoot, `src/file.${extension}`)))).toBe(true);
