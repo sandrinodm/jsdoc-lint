@@ -34,6 +34,8 @@ export async function runCli(argv: string[] = process.argv.slice(2), context: Cl
       excludePaths: parsedArgs.excludePaths,
       excludeFiles: parsedArgs.excludeFiles,
       includeExtensions: parsedArgs.includeExtensions,
+      ...(parsedArgs.requireDrizzleJsDoc ? { requireDrizzleJsDoc: true } : {}),
+      ...(parsedArgs.requireZodJsDoc ? { requireZodJsDoc: true } : {}),
     });
     const result = runCheck(options);
 

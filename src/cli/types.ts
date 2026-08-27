@@ -48,6 +48,16 @@ export interface ParsedArgs {
   roots: string[];
 
   /**
+   * Enables JSDoc checks for direct Drizzle table members.
+   */
+  requireDrizzleJsDoc?: true;
+
+  /**
+   * Enables JSDoc checks for direct Zod object members.
+   */
+  requireZodJsDoc?: true;
+
+  /**
    * Positional target paths.
    */
   targets: string[];

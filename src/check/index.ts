@@ -35,14 +35,21 @@ export function runCheck(options: NormalizedOptions): CheckResult {
       }
 
       const sourceFile = parseSourceFile(filePath);
-      visitSourceFile(sourceFile, (entry) => {
-        failures.push({
-          packageName: packageInfo.name,
-          packageRelativeRoot: packageInfo.relativeRoot,
-          relativeFilePath: toRelativePath(filePath, options.workspaceRoot),
-          ...entry,
-        });
-      });
+      visitSourceFile(
+        sourceFile,
+        (entry) => {
+          failures.push({
+            packageName: packageInfo.name,
+            packageRelativeRoot: packageInfo.relativeRoot,
+            relativeFilePath: toRelativePath(filePath, options.workspaceRoot),
+            ...entry,
+          });
+        },
+        {
+          requireDrizzleJsDoc: options.requireDrizzleJsDoc ?? false,
+          requireZodJsDoc: options.requireZodJsDoc ?? false,
+        }
+      );
     }
   }
 

@@ -1,5 +1,6 @@
 import ts from 'typescript';
 
+import { createSchemaPropertyClassifier, type SchemaJsDocOptions } from './schema-declarations.ts';
 import type { DocumentableDeclaration, FailureEntry } from './types.ts';
 
 /**
@@ -7,12 +8,16 @@ import type { DocumentableDeclaration, FailureEntry } from './types.ts';
  *
  * @param sourceFile Parsed source file to inspect.
  * @param onFailure Callback invoked for each missing-doc hit.
+ * @param options Optional schema-member rules.
  * @returns Nothing.
  */
 export function visitSourceFile(
   sourceFile: ts.SourceFile,
-  onFailure: (entry: Pick<FailureEntry, 'kind' | 'line' | 'name'>) => void
+  onFailure: (entry: Pick<FailureEntry, 'kind' | 'line' | 'name'>) => void,
+  options: SchemaJsDocOptions = {}
 ): void {
+  const classifySchemaProperty = createSchemaPropertyClassifier(sourceFile, options);
+
   /**
    * Visits each node in the source file and reports missing JSDoc on documentable declarations.
    *
@@ -20,7 +25,7 @@ export function visitSourceFile(
    * @returns Nothing.
    */
   const visit = (node: ts.Node): void => {
-    const candidate = getDocumentableDeclaration(node);
+    const candidate = getDocumentableDeclaration(node, classifySchemaProperty);
     if (candidate) {
       const { line } = sourceFile.getLineAndCharacterOfPosition(candidate.reportTarget.getStart(sourceFile));
 
@@ -51,7 +56,10 @@ export function visitSourceFile(
  * @param node AST node under inspection.
  * @returns Declaration metadata or null.
  */
-function getDocumentableDeclaration(node: ts.Node): DocumentableDeclaration | null {
+function getDocumentableDeclaration(
+  node: ts.Node,
+  classifySchemaProperty: ReturnType<typeof createSchemaPropertyClassifier>
+): DocumentableDeclaration | null {
   if (ts.isClassDeclaration(node)) {
     return createDocumentableDeclaration('ClassDeclaration', node.name?.getText() ?? '<anonymous>', node, node);
   }
@@ -95,11 +103,11 @@ function getDocumentableDeclaration(node: ts.Node): DocumentableDeclaration | nu
     return createDocumentableDeclaration('PropertyDeclaration', node.name.getText(), node, node);
   }
 
-  if (ts.isPropertySignature(node) && isNamedDeclarationTypeMember(node.parent)) {
+  if (ts.isPropertySignature(node) && isDocumentableTypeMember(node.parent)) {
     return createDocumentableDeclaration('PropertySignature', node.name.getText(), node, node);
   }
 
-  if (ts.isMethodSignature(node) && isNamedDeclarationTypeMember(node.parent)) {
+  if (ts.isMethodSignature(node) && isDocumentableTypeMember(node.parent)) {
     return createDocumentableDeclaration('MethodSignature', node.name.getText(), node, node);
   }
 
@@ -138,6 +146,12 @@ function getDocumentableDeclaration(node: ts.Node): DocumentableDeclaration | nu
     return createDocumentableDeclaration('TopLevelConstShorthandProperty', node.name.getText(), node, node);
   }
 
+  const schemaPropertyKind = classifySchemaProperty(node);
+  if (schemaPropertyKind) {
+    const schemaProperty = node as ts.PropertyAssignment | ts.ShorthandPropertyAssignment;
+    return createDocumentableDeclaration(schemaPropertyKind, schemaProperty.name.getText(), node, node);
+  }
+
   if (ts.isPropertyAssignment(node)) {
     if (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)) {
       return createDocumentableDeclaration(
@@ -163,17 +177,42 @@ function isNamedDeclarationMember(node: ts.Node): boolean {
 }
 
 /**
- * Checks whether a type member belongs to a named interface or type alias.
+ * Checks whether a type member belongs to a supported documentable type.
  *
  * @param node AST node to inspect.
- * @returns True when the member belongs to a named interface or type alias.
+ * @returns True when the member belongs to a documentable type.
  */
-function isNamedDeclarationTypeMember(node: ts.Node): boolean {
+function isDocumentableTypeMember(node: ts.Node): boolean {
   if (ts.isInterfaceDeclaration(node)) {
     return true;
   }
 
-  return ts.isTypeLiteralNode(node) && ts.isTypeAliasDeclaration(node.parent);
+  /* v8 ignore next 3 -- TypeScript property and method signatures only have interface or type-literal parents. */
+  if (!ts.isTypeLiteralNode(node)) {
+    return false;
+  }
+
+  return ts.isTypeAliasDeclaration(node.parent) || isClassExtendsTypeArgument(node);
+}
+
+/**
+ * Checks whether a type literal is a direct type argument in a class extends clause.
+ *
+ * @param node Type literal node to inspect.
+ * @returns True when the type literal describes an extended class's inline type argument.
+ */
+function isClassExtendsTypeArgument(node: ts.TypeLiteralNode): boolean {
+  const expression = node.parent;
+  if (!ts.isExpressionWithTypeArguments(expression)) {
+    return false;
+  }
+
+  const heritageClause = expression.parent;
+  return (
+    ts.isHeritageClause(heritageClause) &&
+    heritageClause.token === ts.SyntaxKind.ExtendsKeyword &&
+    ts.isClassDeclaration(heritageClause.parent)
+  );
 }
 
 /**
@@ -247,6 +286,8 @@ function hasRequiredMemberSpacing(declaration: DocumentableDeclaration, sourceFi
     declaration.kind !== 'PropertySignature' &&
     declaration.kind !== 'MethodSignature' &&
     declaration.kind !== 'PropertyDeclaration' &&
+    declaration.kind !== 'DrizzleSchemaProperty' &&
+    declaration.kind !== 'ZodSchemaProperty' &&
     declaration.kind !== 'TopLevelConstDeclaration' &&
     declaration.kind !== 'TopLevelConstPropertyAssignment' &&
     declaration.kind !== 'TopLevelConstShorthandProperty'

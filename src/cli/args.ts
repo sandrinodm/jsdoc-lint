@@ -35,6 +35,16 @@ export function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
 
+    if (value === '--require-drizzle-jsdoc') {
+      parsedArgs.requireDrizzleJsDoc = true;
+      continue;
+    }
+
+    if (value === '--require-zod-jsdoc') {
+      parsedArgs.requireZodJsDoc = true;
+      continue;
+    }
+
     if (value === '--config') {
       parsedArgs.configPath = readFlagValue(argv, index, value);
       index += 1;
@@ -90,6 +100,8 @@ export function getHelpText(): string {
     '  --exclude-path <path>   Exclude a path segment or relative path prefix.',
     '  --exclude-file <regex>  Exclude filenames or relative paths matching a regex.',
     '  --include-ext <ext>     Restrict scanned file extensions.',
+    '  --require-drizzle-jsdoc Require JSDoc on direct Drizzle table members.',
+    '  --require-zod-jsdoc     Require JSDoc on direct Zod object members.',
     '  --json                  Emit machine-readable JSON.',
     '  -h, --help              Show help.',
   ].join('\n');

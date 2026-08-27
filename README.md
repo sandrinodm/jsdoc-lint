@@ -7,8 +7,10 @@ Context is king. JSDoc lets teams colocate durable, human-readable context direc
 - functions and function-like declarations
 - classes, interfaces, and type aliases
 - documented fields on classes, interfaces, and named object type aliases
+- direct members of inline type arguments in class `extends` clauses
 - top-level `const` declarations
 - direct properties inside top-level object-literal constants
+- optionally, direct Drizzle table and Zod object-schema members
 
 JSDoc blocks must be multiline. Single-line blocks like `/** Description. */` are reported the same way as missing JSDoc.
 
@@ -58,6 +60,8 @@ The CLI exits with:
 - `--exclude-path <path>`: exclude a path segment or relative path prefix
 - `--exclude-file <regex>`: exclude filenames or relative paths matching a regex
 - `--include-ext <ext>`: restrict scanned file extensions
+- `--require-drizzle-jsdoc`: require JSDoc on direct Drizzle table members
+- `--require-zod-jsdoc`: require JSDoc on direct Zod object members
 - `--json`: emit machine-readable JSON
 - `-h`, `--help`: show usage
 
@@ -71,6 +75,8 @@ Supported config keys:
 - `excludePaths: string[]`
 - `excludeFiles: string[]`
 - `includeExtensions: string[]`
+- `requireDrizzleJsDoc: boolean` (default: `false`)
+- `requireZodJsDoc: boolean` (default: `false`)
 
 Example:
 
@@ -79,11 +85,25 @@ Example:
   "roots": ["apps", "packages"],
   "excludePaths": ["node_modules", "dist", ".next", "packages/ui/src/generated"],
   "excludeFiles": ["\\.d\\.[cm]?ts$", "\\.test\\.[^.]+$", "\\.spec\\.[^.]+$"],
-  "includeExtensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts"]
+  "includeExtensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts"],
+  "requireDrizzleJsDoc": true,
+  "requireZodJsDoc": true
 }
 ```
 
-CLI flags override config values for the current run.
+Path and extension CLI flags override their config values for the current run. Schema JSDoc flags enable their
+corresponding checks for the current run.
+
+### Drizzle and Zod schema members
+
+The schema-member checks are disabled by default. Drizzle detection follows imports from `drizzle-orm` package paths and
+checks the direct properties in the columns object passed to imported table functions such as `pgTable`, `mysqlTable`,
+and `sqliteTable`.
+
+Zod detection follows default, namespace, and named imports from `zod` package paths. It checks direct properties passed
+to `object`, `strictObject`, and `looseObject`, including members of nested object schemas.
+
+Schema properties use the same multiline JSDoc and member-spacing requirements as other documented members.
 
 ## Library
 

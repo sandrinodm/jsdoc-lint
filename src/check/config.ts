@@ -48,11 +48,15 @@ export function normalizeOptions({
   excludePaths = [],
   excludeFiles = [],
   includeExtensions = [],
+  requireDrizzleJsDoc,
+  requireZodJsDoc,
 }: NormalizeOptionsInput = {}): NormalizedOptions {
   const configRoots = readStringArray(config.roots);
   const configExcludePaths = readStringArray(config.excludePaths);
   const configExcludeFiles = readStringArray(config.excludeFiles);
   const configIncludeExtensions = readStringArray(config.includeExtensions);
+  const configRequireDrizzleJsDoc = readBoolean(config.requireDrizzleJsDoc);
+  const configRequireZodJsDoc = readBoolean(config.requireZodJsDoc);
 
   const resolvedRoots = roots.length > 0 ? roots : configRoots.length > 0 ? configRoots : DEFAULT_ROOTS;
   const resolvedIncludeExtensions =
@@ -71,6 +75,8 @@ export function normalizeOptions({
       normalizePathFragment
     ),
     excludeFilePatterns: [...DEFAULT_EXCLUDE_FILES, ...configExcludeFiles, ...excludeFiles].map(createPattern),
+    requireDrizzleJsDoc: requireDrizzleJsDoc ?? configRequireDrizzleJsDoc ?? false,
+    requireZodJsDoc: requireZodJsDoc ?? configRequireZodJsDoc ?? false,
   };
 }
 
@@ -142,6 +148,16 @@ function createPattern(value: string): RegExp {
  */
 function readStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+}
+
+/**
+ * Reads a boolean from config, ignoring invalid values.
+ *
+ * @param value Raw config value.
+ * @returns Boolean value when valid.
+ */
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
 }
 
 /**

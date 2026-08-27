@@ -78,6 +78,16 @@ export interface NormalizeOptionsInput {
    * File extensions to include in the scan.
    */
   includeExtensions?: string[];
+
+  /**
+   * Whether direct Drizzle table members require JSDoc.
+   */
+  requireDrizzleJsDoc?: boolean;
+
+  /**
+   * Whether direct Zod object members require JSDoc.
+   */
+  requireZodJsDoc?: boolean;
 }
 
 /**
@@ -113,6 +123,16 @@ export interface NormalizedOptions {
    * Compiled filename exclusion patterns.
    */
   excludeFilePatterns: RegExp[];
+
+  /**
+   * Whether direct Drizzle table members require JSDoc. Defaults to false.
+   */
+  requireDrizzleJsDoc?: boolean;
+
+  /**
+   * Whether direct Zod object members require JSDoc. Defaults to false.
+   */
+  requireZodJsDoc?: boolean;
 }
 
 /**

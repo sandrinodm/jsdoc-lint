@@ -16,6 +16,8 @@ describe('runCli', () => {
 
     expect(exitCode).toBe(0);
     expect(output.join('')).toContain('Usage: jsdoc-lint [targets...] [options]');
+    expect(output.join('')).toContain('--require-drizzle-jsdoc');
+    expect(output.join('')).toContain('--require-zod-jsdoc');
   });
 
   test('returns a failing exit code and prints diagnostics', async () => {
@@ -138,6 +140,51 @@ describe('runCli', () => {
 
     expect(exitCode).toBe(1);
     expect(errorOutput.join('')).toContain('missing');
+  });
+
+  test('enables optional schema JSDoc rules from CLI flags', async () => {
+    const workspaceRoot = await createWorkspace({
+      'packages/schemas/package.json': JSON.stringify({ name: '@scope/schemas' }),
+      'packages/schemas/src/drizzle.ts': [
+        "import { pgTable, uuid } from 'drizzle-orm/pg-core';",
+        '/**',
+        ' * Workspace table.',
+        ' */',
+        "export const workspaces = pgTable('workspaces', {",
+        '  id: uuid().primaryKey(),',
+        '});',
+      ].join('\n'),
+      'packages/schemas/src/zod.ts': [
+        "import { z } from 'zod';",
+        '/**',
+        ' * Workspace input.',
+        ' */',
+        'export const workspaceInput = z.object({',
+        '  displayName: z.string(),',
+        '});',
+      ].join('\n'),
+    });
+    const successOutput: string[] = [];
+    const errorOutput: string[] = [];
+
+    const defaultCode = await runCli(['--root', 'packages'], {
+      cwd: workspaceRoot,
+      stdout: (value) => successOutput.push(value),
+      stderr: () => undefined,
+    });
+    const enabledCode = await runCli(['--root', 'packages', '--require-drizzle-jsdoc', '--require-zod-jsdoc'], {
+      cwd: workspaceRoot,
+      stdout: () => undefined,
+      stderr: (value) => errorOutput.push(value),
+    });
+
+    expect(defaultCode).toBe(0);
+    expect(successOutput.join('')).toContain('All checked declarations have multiline JSDoc.');
+    expect(enabledCode).toBe(1);
+    expect(errorOutput.join('')).toContain('DrizzleSchemaProperty');
+    expect(errorOutput.join('')).toContain('id');
+    expect(errorOutput.join('')).toContain('ZodSchemaProperty');
+    expect(errorOutput.join('')).toContain('displayName');
   });
 
   test('returns usage errors for invalid arguments', async () => {

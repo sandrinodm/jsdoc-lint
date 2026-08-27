@@ -65,6 +65,70 @@ describe('loadConfig and normalizeOptions', () => {
     expect(result.failures.map((failure) => failure.name)).toEqual(['override']);
     expect(() => normalizeOptions({ excludeFiles: ['['] })).toThrow(/Invalid exclude-file pattern/);
   });
+
+  test('normalizes optional schema JSDoc rules', () => {
+    expect(normalizeOptions()).toMatchObject({
+      requireDrizzleJsDoc: false,
+      requireZodJsDoc: false,
+    });
+    expect(
+      normalizeOptions({
+        config: {
+          requireDrizzleJsDoc: true,
+          requireZodJsDoc: true,
+        },
+      })
+    ).toMatchObject({
+      requireDrizzleJsDoc: true,
+      requireZodJsDoc: true,
+    });
+    expect(
+      normalizeOptions({
+        config: {
+          requireDrizzleJsDoc: true,
+          requireZodJsDoc: true,
+        },
+        requireDrizzleJsDoc: false,
+        requireZodJsDoc: false,
+      })
+    ).toMatchObject({
+      requireDrizzleJsDoc: false,
+      requireZodJsDoc: false,
+    });
+  });
+
+  test('enables schema JSDoc rules from config', async () => {
+    const workspaceRoot = await createWorkspace({
+      'jsdoc.json': JSON.stringify({
+        roots: ['packages'],
+        requireDrizzleJsDoc: true,
+        requireZodJsDoc: true,
+      }),
+      'packages/schemas/package.json': JSON.stringify({ name: '@scope/schemas' }),
+      'packages/schemas/src/drizzle.ts': [
+        "import { pgTable, uuid } from 'drizzle-orm/pg-core';",
+        '/**',
+        ' * Workspace table.',
+        ' */',
+        "export const workspaces = pgTable('workspaces', { id: uuid() });",
+      ].join('\n'),
+      'packages/schemas/src/zod.ts': [
+        "import { z } from 'zod';",
+        '/**',
+        ' * Workspace input.',
+        ' */',
+        'export const workspaceInput = z.object({ displayName: z.string() });',
+      ].join('\n'),
+    });
+    const { config, configRoot } = loadConfig({ cwd: workspaceRoot });
+
+    const result = runCheck(normalizeOptions({ cwd: workspaceRoot, workspaceRoot: configRoot, config }));
+
+    expect(result.failures.map(({ kind, name }) => ({ kind, name }))).toEqual([
+      { kind: 'DrizzleSchemaProperty', name: 'id' },
+      { kind: 'ZodSchemaProperty', name: 'displayName' },
+    ]);
+  });
 });
 
 async function createWorkspace(files: Record<string, string>): Promise<string> {

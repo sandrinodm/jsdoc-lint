@@ -12,6 +12,7 @@ export default defineConfig({
         'src/check/files.ts',
         'src/check/index.ts',
         'src/check/report.ts',
+        'src/check/schema-declarations.ts',
         'src/cli/args.ts',
         'src/cli/index.ts',
         'src/cli/run.ts',

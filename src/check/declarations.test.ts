@@ -252,17 +252,174 @@ describe('visitSourceFile', () => {
       { kind: 'FunctionExpressionProperty', name: 'nestedFunction' },
     ]);
   });
+
+  test('reports undocumented members in an inline class heritage type argument', () => {
+    const failures = collectDeclarationFailures(
+      [
+        '/**',
+        ' * Preserves the Effect Config failure when startup settings are missing or invalid.',
+        ' */',
+        "export class RuntimeConfigError extends Data.TaggedError('RuntimeConfigError')<{",
+        '  readonly cause: unknown;',
+        '  readonly message: string;',
+        '}> {}',
+      ].join('\n')
+    );
+
+    expect(failures.map(({ kind, name }) => ({ kind, name }))).toEqual([
+      { kind: 'PropertySignature', name: 'cause' },
+      { kind: 'PropertySignature', name: 'message' },
+    ]);
+  });
+
+  test('requires class JSDoc independently of inline class heritage member JSDoc', () => {
+    const failures = collectDeclarationFailures(
+      [
+        "export class RuntimeConfigError extends Data.TaggedError('RuntimeConfigError')<{",
+        '  /**',
+        '   * Original failure.',
+        '   */',
+        '  readonly cause: unknown;',
+        '',
+        '  /**',
+        '   * Safe failure message.',
+        '   */',
+        '  readonly message: string;',
+        '}> {}',
+      ].join('\n')
+    );
+
+    expect(failures.map(({ kind, name }) => ({ kind, name }))).toEqual([
+      { kind: 'ClassDeclaration', name: 'RuntimeConfigError' },
+    ]);
+  });
+
+  test('optionally reports undocumented Drizzle table members', () => {
+    const sourceText = [
+      "import { sql } from 'drizzle-orm';",
+      "import { check, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';",
+      '',
+      '/**',
+      ' * Canonical workspace persistence schema.',
+      ' */',
+      'export const workspaces = pgTable(',
+      "  'workspaces',",
+      '  {',
+      '    id: uuid().defaultRandom().primaryKey(),',
+      "    displayName: varchar('display_name', { length: 120 }).notNull(),",
+      "    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),",
+      "    updatedAt: timestamp('updated_at', { withTimezone: true })",
+      '      .defaultNow()',
+      '      .$onUpdate(() => new Date())',
+      '      .notNull(),',
+      '  },',
+      `  (table) => [check('workspaces_display_name_not_blank', sql\`char_length(btrim(\${table.displayName})) > 0\`)],`,
+      ');',
+    ].join('\n');
+
+    expect(collectDeclarationFailures(sourceText)).toEqual([]);
+    expect(
+      collectDeclarationFailures(sourceText, 'source.ts', ts.ScriptKind.TS, { requireDrizzleJsDoc: true }).map(
+        ({ kind, name }) => ({ kind, name })
+      )
+    ).toEqual([
+      { kind: 'DrizzleSchemaProperty', name: 'id' },
+      { kind: 'DrizzleSchemaProperty', name: 'displayName' },
+      { kind: 'DrizzleSchemaProperty', name: 'createdAt' },
+      { kind: 'DrizzleSchemaProperty', name: 'updatedAt' },
+    ]);
+  });
+
+  test('optionally reports undocumented Zod object members', () => {
+    const sourceText = [
+      "import { z } from 'zod';",
+      '',
+      '/**',
+      ' * Workspace input schema.',
+      ' */',
+      'export const workspaceSchema = z.object({',
+      '  id: z.uuid(),',
+      '  profile: z.object({',
+      '    displayName: z.string(),',
+      '  }),',
+      '});',
+    ].join('\n');
+
+    expect(collectDeclarationFailures(sourceText)).toEqual([]);
+    expect(
+      collectDeclarationFailures(sourceText, 'source.ts', ts.ScriptKind.TS, { requireZodJsDoc: true }).map(
+        ({ kind, name }) => ({ kind, name })
+      )
+    ).toEqual([
+      { kind: 'ZodSchemaProperty', name: 'id' },
+      { kind: 'ZodSchemaProperty', name: 'profile' },
+      { kind: 'ZodSchemaProperty', name: 'displayName' },
+    ]);
+  });
+
+  test('recognizes aliased Drizzle and namespace Zod imports', () => {
+    const sourceText = [
+      "import { pgTable as defineTable, uuid } from 'drizzle-orm/pg-core';",
+      "import * as schema from 'zod';",
+      '',
+      '/**',
+      ' * Workspace table.',
+      ' */',
+      "export const workspaces = defineTable('workspaces', {",
+      '  /**',
+      '   * Workspace identifier.',
+      '   */',
+      '  id: uuid(),',
+      '});',
+      '',
+      '/**',
+      ' * Workspace input.',
+      ' */',
+      'export const workspaceInput = schema.strictObject({',
+      '  /**',
+      '   * Workspace display name.',
+      '   */',
+      '  displayName: schema.string(),',
+      '});',
+    ].join('\n');
+
+    expect(
+      collectDeclarationFailures(sourceText, 'source.ts', ts.ScriptKind.TS, {
+        requireDrizzleJsDoc: true,
+        requireZodJsDoc: true,
+      })
+    ).toEqual([]);
+  });
+
+  test('ignores members of inline parameter object types', () => {
+    const failures = collectDeclarationFailures(
+      [
+        '/**',
+        ' * Accepts inline input.',
+        ' */',
+        'export function accept(input: {',
+        '  value: string;',
+        '  run(): void;',
+        '}) {',
+        '  return input;',
+        '}',
+      ].join('\n')
+    );
+
+    expect(failures).toEqual([]);
+  });
 });
 
 function collectDeclarationFailures(
   sourceText: string,
   fileName = 'source.ts',
-  scriptKind = ts.ScriptKind.TS
+  scriptKind = ts.ScriptKind.TS,
+  options: { requireDrizzleJsDoc?: boolean; requireZodJsDoc?: boolean } = {}
 ): Pick<FailureEntry, 'kind' | 'line' | 'name'>[] {
   const failures: Pick<FailureEntry, 'kind' | 'line' | 'name'>[] = [];
   const sourceFile = ts.createSourceFile(fileName, sourceText, ts.ScriptTarget.Latest, true, scriptKind);
 
-  visitSourceFile(sourceFile, (failure) => failures.push(failure));
+  visitSourceFile(sourceFile, (failure) => failures.push(failure), options);
 
   return failures;
 }

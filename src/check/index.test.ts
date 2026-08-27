@@ -100,6 +100,23 @@ describe('runCheck', () => {
 
     expect(result.failures.map((failure) => failure.name)).toEqual(['keepMe']);
   });
+
+  test('supports normalized options created before schema rules were added', async () => {
+    const workspaceRoot = await createWorkspace({
+      'package.json': JSON.stringify({ name: 'legacy-options' }),
+      'src/index.ts': '/**\n * Documented value.\n */\nexport const value = 1;',
+    });
+    const {
+      requireDrizzleJsDoc: _drizzle,
+      requireZodJsDoc: _zod,
+      ...legacyOptions
+    } = normalizeOptions({
+      workspaceRoot,
+      roots: ['.'],
+    });
+
+    expect(runCheck(legacyOptions)).toEqual({ failures: [] });
+  });
 });
 
 async function createWorkspace(files: Record<string, string>): Promise<string> {
