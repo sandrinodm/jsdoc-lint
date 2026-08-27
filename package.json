@@ -7,12 +7,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sandrinodimattia/jsdoc-lint.git"
+    "url": "git+https://github.com/sandrinodm/jsdoc-lint.git"
   },
   "bugs": {
-    "url": "https://github.com/sandrinodimattia/jsdoc-lint/issues"
+    "url": "https://github.com/sandrinodm/jsdoc-lint/issues"
   },
-  "homepage": "https://github.com/sandrinodimattia/jsdoc-lint#readme",
+  "homepage": "https://github.com/sandrinodm/jsdoc-lint#readme",
   "keywords": [
     "jsdoc",
     "lint",
